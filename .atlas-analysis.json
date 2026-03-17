@@ -1,0 +1,58 @@
+{
+  "projectType": "frontend",
+  "projectName": "allocazione.dev",
+  "projectDescription": "A personal portfolio and developer hub for Sel (@seleneftw), built with Svelte 5, SvelteKit 2, and Tailwind CSS 4, featuring a bento-grid layout, dynamic accent colors, internationalization, GitHub project integration, and Stats.fm music activity.",
+  "theme": "willow",
+  "primaryColor": "#e16666",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Overview",
+        "groups": [
+          { "group": "Get Started", "pages": ["introduction", "quickstart"] },
+          { "group": "Architecture", "pages": ["architecture/project-structure", "architecture/core-systems"] }
+        ]
+      },
+      {
+        "tab": "Features",
+        "groups": [
+          { "group": "Pages", "pages": ["features/home", "features/projects", "features/contact", "features/uses"] },
+          { "group": "Systems", "pages": ["features/internationalization", "features/accent-color", "features/data-integration"] }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          { "group": "Configuration", "pages": ["reference/site-config", "reference/components", "reference/deployment"] }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Bento-grid responsive layout with glassmorphism UI cards",
+    "Dynamic per-visitor accent color system with SSR FOUC prevention",
+    "Internationalization in English, Italian, German, and Spanish via svelte-i18n",
+    "Live GitHub repository archive with in-memory caching and language breakdown stats",
+    "Stats.fm music activity widget showing current/recent listening",
+    "SvelteKit SSG output for zero-JS static hosting on GitHub Pages or Cloudflare Pages",
+    "View Transition API navigation animations for desktop",
+    "Security headers via SvelteKit server hooks"
+  ],
+  "publicApiSurface": [
+    "siteConfig — site-wide data configuration (src/lib/config.js)",
+    "themeState — reactive accent color store (src/lib/state.svelte.js)",
+    "i18n locale system — en/it/de/es (src/lib/locales/i18n.js)",
+    "/ — Home page with bio, clock, and music widget",
+    "/projects — GitHub-sourced project archive with stats",
+    "/contact — Social links and contact hub",
+    "/uses — Hardware/software setup listing",
+    "Nav.svelte — Top navigation bar (src/lib/components/ui/Nav.svelte)",
+    "Button.svelte — Atomic button component (src/lib/components/ui/Button.svelte)",
+    "Clock.svelte — Live local-time clock widget (src/lib/components/widgets/Clock.svelte)",
+    "StatsFM.svelte — Stats.fm music activity widget (src/lib/components/widgets/StatsFM.svelte)",
+    "ProjectCard.svelte — GitHub repo card (src/lib/components/widgets/ProjectCard.svelte)",
+    "tooltip.js — DOM tooltip action (src/lib/actions/tooltip.js)"
+  ]
+}
