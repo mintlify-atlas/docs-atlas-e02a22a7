@@ -1,0 +1,135 @@
+---
+title: "Site Configuration"
+description: "Complete reference for `src/lib/config.js` — the single source of truth for all site data"
+---
+
+`src/lib/config.js` exports a single `siteConfig` object that drives every piece of site-specific data — from the owner's name and social links to the pool of meta descriptions. No environment variables are needed; all customisation happens here.
+
+## The `siteConfig` object
+
+```js src/lib/config.js
+export const siteConfig = {
+    name: "Sel",
+    profession: "Cybersecurity Intern, Malware Researcher and Linux Tinkerer",
+    skills: "optimizations and forensic security",
+    avatar: "https://github.com/allocazione.png",
+    email: "me@allocazione.dev",
+    github: "allocazione",
+    statsFmUser: "iriel",
+    socials: [
+        { name: "GitHub", url: "https://github.com/allocazione" },
+        { name: "Discord", url: "https://discord.com/users/659022591071223819" },
+        { name: "Telegram", url: "https://t.me/seleneftw" },
+        { name: "Steam", url: "https://steamcommunity.com/id/seloris" }
+    ],
+    descriptions: [
+        "// is that the tempo i'm meant to follow?",
+        "// if i live to be a weathervane, always poining off, to lead you along the flyway",
+        "// rain or shine, im by your side, so why won't you look my way?",
+        "// oh, to be your constant companion!",
+        "// cadmium colors painted inside me",
+        "// その過去を 捨てて ここまで おいで",
+        "// as long as there are stars up above",
+        "// baby do you know what you wanna hear?",
+    ],
+    lastUpdated: "2026-03-10"
+};
+```
+
+## Property reference
+
+<ResponseField name="name" type="string" required>
+  Display name used in page titles and greeting copy throughout the site.
+
+  Current value: `"Sel"`
+</ResponseField>
+
+<ResponseField name="profession" type="string" required>
+  Professional title shown in the bio section on the home page.
+
+  Current value: `"Cybersecurity Intern, Malware Researcher and Linux Tinkerer"`
+</ResponseField>
+
+<ResponseField name="skills" type="string" required>
+  Short skills phrase embedded in about-section prose.
+
+  Current value: `"optimizations and forensic security"`
+</ResponseField>
+
+<ResponseField name="avatar" type="string" required>
+  URL to the owner's avatar image. Rendered in the bio card and any place a profile picture is needed.
+
+  Current value: `"https://github.com/allocazione.png"`
+</ResponseField>
+
+<ResponseField name="email" type="string" required>
+  Contact email address. Used on the `/contact` page and in `mailto:` links.
+
+  Current value: `"me@allocazione.dev"`
+</ResponseField>
+
+<ResponseField name="github" type="string" required>
+  GitHub username. Used as the owner parameter when querying the GitHub REST API to populate the projects archive.
+
+  Current value: `"allocazione"`
+</ResponseField>
+
+<ResponseField name="statsFmUser" type="string" required>
+  Stats.fm username. The `StatsFM` widget calls `https://beta-api.stats.fm/api/v1/users/{statsFmUser}/streams/current` with this value.
+
+  Current value: `"iriel"`
+</ResponseField>
+
+<ResponseField name="socials" type="Array<{ name: string, url: string }>" required>
+  List of social platform entries rendered as links on the contact page and in the footer. Each entry has two fields:
+
+  <Expandable title="Shape">
+    <ResponseField name="name" type="string">
+      Human-readable platform name (e.g. `"GitHub"`, `"Discord"`).
+    </ResponseField>
+    <ResponseField name="url" type="string">
+      Full URL to the profile or channel.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="descriptions" type="Array<string>" required>
+  Pool of strings randomly selected for meta `description` tags and about-section copy. All current entries are lyric fragments prefixed with `//`.
+</ResponseField>
+
+<ResponseField name="lastUpdated" type="string" required>
+  ISO 8601 date string (`YYYY-MM-DD`) displayed as the site's last-updated status on the `/uses` page.
+
+  Current value: `"2026-03-10"`
+</ResponseField>
+
+## How to add a new social
+
+Append an object to the `socials` array with a `name` and `url`:
+
+```js src/lib/config.js
+socials: [
+    { name: "GitHub",   url: "https://github.com/allocazione" },
+    { name: "Discord",  url: "https://discord.com/users/659022591071223819" },
+    { name: "Telegram", url: "https://t.me/seleneftw" },
+    { name: "Steam",    url: "https://steamcommunity.com/id/seloris" },
+    // add your new entry here:
+    { name: "Mastodon", url: "https://mastodon.social/@yourhandle" }
+],
+```
+
+The contact page iterates over `siteConfig.socials` to render every entry automatically — no other file needs to change.
+
+## How to add a new description
+
+Append a string to the `descriptions` array:
+
+```js src/lib/config.js
+descriptions: [
+    "// is that the tempo i'm meant to follow?",
+    // ... existing entries ...
+    "// your new lyric or phrase here"
+],
+```
+
+Descriptions are chosen at random at runtime, so the new entry will appear in the rotation immediately after a rebuild.

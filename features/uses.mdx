@@ -1,0 +1,130 @@
+---
+title: "/uses"
+description: "A curated list of hardware and software Sel uses daily"
+---
+
+The `/uses` page lists all of the hardware and software that Sel reaches for on a daily basis. It follows the community convention of [`/uses`](https://uses.tech) pages.
+
+## Page header
+
+The page heading is driven by the `uses.header` i18n key (`/uses.`). A `lastUpdated` timestamp from `siteConfig` is shown beside the heading when present:
+
+```js config.js
+lastUpdated: "2026-03-10"
+```
+
+```html uses/+page.svelte
+{#if lastUpdated}
+  <span class="text-[10px] text-gray-500 font-['Space_Mono'] tracking-widest lowercase">
+    {$t('uses.last_updated', { values: { date: lastUpdated } })}
+  </span>
+{/if}
+```
+
+The i18n template for that label is `"last updated: {date}"`.
+
+## Category data
+
+Categories are read directly from the i18n JSON using `svelte-i18n`'s `$json()` function:
+
+```js uses/+page.svelte
+const categories = $derived($json("uses.categories") || []);
+```
+
+This means the category list is fully locale-aware — swapping locale automatically updates all category titles and item descriptions without any additional code.
+
+Each category entry in the JSON has the shape:
+
+```json en.json
+{
+  "title": "setup",
+  "items": [
+    { "name": "OS", "description": "Fedora Linux, Ubuntu Server, Windows 10", "url": "#" }
+  ]
+}
+```
+
+Items whose `url` is `"#"` are rendered as plain `<span>` elements. Items with a real URL are rendered as `<a>` tags that open in a new tab with a subtle arrow icon that appears on hover.
+
+## Categories
+
+<AccordionGroup>
+  <Accordion title="setup">
+    | Name | Description |
+    |------|-------------|
+    | OS | Fedora Linux, Ubuntu Server, Windows 10 |
+    | WM/DE | GNOME, Niri + MangoWM |
+    | Terminal | Alacritty |
+    | Shell | fish |
+  </Accordion>
+
+  <Accordion title="editor">
+    | Name | Description |
+    |------|-------------|
+    | Editor | Zed |
+    | Theme | Nord |
+    | Font | Adwaita |
+  </Accordion>
+
+  <Accordion title="hardware">
+    | Name | Description |
+    |------|-------------|
+    | CPU | Intel Core i7-10700k |
+    | GPU | NVIDIA GeForce RTX 3070 |
+    | Monitor 1 | BenQ Zowie XL2411P |
+    | Monitor 2 | LG UltraGear 24GN600-B |
+    | Desk | Custom Made |
+    | Chair | SecretLab Titan Evo 2022 |
+  </Accordion>
+
+  <Accordion title="keyboard + mouse">
+    | Name | Description |
+    |------|-------------|
+    | Keyboard | Wooting 80HE |
+    | Switches | Wooting Lekker V2 Switches |
+    | Mouse | Razer Viper V3 Pro |
+  </Accordion>
+
+  <Accordion title="audio">
+    | Name | Description |
+    |------|-------------|
+    | Headphones | Beyerdynamic DT 990 PRO |
+    | Microphone | HyperX Quadcast S |
+  </Accordion>
+
+  <Accordion title="software">
+    | Name | Description |
+    |------|-------------|
+    | Browser | Floorp / Thorium |
+    | Music | Spotify |
+    | Notes | Obsidian |
+    | Password Manager | 2FAS Pass |
+  </Accordion>
+</AccordionGroup>
+
+## Pending placeholder
+
+After all category cards the grid always renders one additional dashed-border card as a placeholder for upcoming categories. Its label is sourced from `uses.pending`:
+
+```html uses/+page.svelte
+<div
+  class="bg-[#0f0f0f]/40 border border-[#252525] border-dashed rounded-4xl p-8 flex items-center justify-center"
+>
+  <span
+    class="text-gray-600 text-xs font-['Space_Mono'] tracking-widest lowercase animate-pulse"
+  >{$t('uses.pending')}</span>
+</div>
+```
+
+The English value for `uses.pending` is `"// connection pending..."`.
+
+## i18n keys
+
+| Key | English value |
+|-----|---------------|
+| `uses.title` | `@seleneftw / uses` |
+| `uses.header` | `/uses.` |
+| `uses.description` | `a collection of the tools, hardware, and software i use on a daily basis to build things and spend my free time with.` |
+| `uses.last_updated` | `last updated: {date}` |
+| `uses.pending` | `// connection pending...` |
+| `uses.categories` | Array of category objects (see above) |

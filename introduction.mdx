@@ -1,0 +1,71 @@
+---
+title: "Introduction"
+description: "Documentation for allocazione.dev — a personal portfolio built with Svelte 5, SvelteKit 2, and Tailwind CSS 4."
+---
+
+# allocazione.dev
+
+A personal portfolio and developer hub for **Sel** (`@seleneftw`) — a cybersecurity researcher and developer focused on low-level systems and security. Built with modern web technologies for high performance, accessibility, and aesthetic polish.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get the site running locally in under two minutes
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/architecture/project-structure">
+    Understand the file layout and module organization
+  </Card>
+  <Card title="Core Systems" icon="gear" href="/architecture/core-systems">
+    Dive into i18n, accent color, and data integration
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/reference/site-config">
+    Customize the site via `src/lib/config.js`
+  </Card>
+</CardGroup>
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js |
+| Framework | Svelte 5 (Runes) |
+| Meta-framework | SvelteKit 2 (SSG) |
+| Styling | Tailwind CSS 4 |
+| Localization | svelte-i18n |
+| Animation | anime.js |
+| Distribution | GitHub Pages / Cloudflare Pages |
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Bento-grid layout" icon="grid-2">
+    Responsive glassmorphism card grid adapts from single-column mobile to a 4-column desktop layout
+  </Card>
+  <Card title="Dynamic accent colors" icon="palette">
+    Each visitor gets a randomly assigned accent color persisted in a cookie, injected server-side to prevent FOUC
+  </Card>
+  <Card title="Internationalization" icon="language">
+    Full UI translations in English, Italian, German, and Spanish via svelte-i18n with cookie-based locale persistence
+  </Card>
+  <Card title="GitHub integration" icon="github">
+    Live project archive fetched from the GitHub REST API with in-memory caching and language breakdown stats
+  </Card>
+  <Card title="Stats.fm widget" icon="music">
+    Real-time music activity card powered by the Stats.fm API showing current and recent listening
+  </Card>
+  <Card title="Static output" icon="bolt">
+    SvelteKit SSG adapter produces a fully static site deployable to any CDN with zero server runtime
+  </Card>
+</CardGroup>
+
+## Pages
+
+The site has four public routes:
+
+- **`/`** — Home: bio card, about section, music widget, live clock
+- **`/projects`** — Archive: GitHub repos with language breakdown chart
+- **`/contact`** — Contact hub: social links and email
+- **`/uses`** — Setup: curated list of hardware and software
+
+## Source code
+
+The full source is available at [allocazione/allocazione.dev](https://github.com/allocazione/allocazione.dev).

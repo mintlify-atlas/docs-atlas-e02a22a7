@@ -1,0 +1,160 @@
+---
+title: "Home Page"
+description: "The main landing page with bio, about section, music widget, and clock"
+---
+
+The home page (`/`) is the primary landing page of the portfolio. It is built around a responsive **bento-grid layout** that adapts from a single column on mobile to a four-column asymmetric grid on wider screens.
+
+## Grid layout
+
+The page root element uses a CSS grid powered by Tailwind:
+
+```html +page.svelte
+<div
+  class="home-page grid grid-cols-1 md:grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 md:gap-6 w-full animate-page-in relative z-10"
+>
+```
+
+On `md` breakpoints and above the grid has four columns with proportions `1.5fr 1fr 1fr 1fr`. Each card spans a different number of those columns:
+
+<CardGroup cols={2}>
+  <Card title="Bio / avatar card" icon="user">
+    `md:col-span-1 md:row-span-2` — occupies the first column and spans two rows, keeping the avatar and greeting always vertically centred beside the other cards.
+  </Card>
+  <Card title="About card" icon="file-text">
+    `md:col-span-3` — fills the remaining three columns in the first row. Contains the "who am i?" heading and the two bio paragraphs.
+  </Card>
+  <Card title="Music widget" icon="music">
+    `md:col-span-2` — sits in the second row, columns 2–3. Renders the `StatsFM` component showing the currently playing (or last played) track.
+  </Card>
+  <Card title="Clock" icon="clock">
+    `md:col-span-1` — sits in the second row, column 4. Renders the `Clock` component showing live local time in Bologna, Italy.
+  </Card>
+</CardGroup>
+
+Every card shares a common dark-glass appearance:
+
+```html +page.svelte
+bg-[#0f0f0f]/80 backdrop-blur-xl border border-[#252525] rounded-4xl shadow-2xl
+```
+
+## Accent color glow
+
+Cards react to the global CSS accent color through two mechanisms:
+
+1. **Hover shadow** — each card transitions to `hover:shadow-[0_0_15px_rgba(var(--accent-rgb),0.03)]` on hover.
+2. **Ambient blob** — an `aria-hidden` div with `bg-accent/10` and a large `blur` sits absolutely positioned inside each card, creating a soft ambient glow. Both `--accent` and `--accent-rgb` are CSS custom properties that the `StatsFM` widget updates dynamically when album art is loaded.
+
+```html +page.svelte
+<div
+  aria-hidden="true"
+  class="absolute -top-24 -left-24 w-48 h-48 bg-accent/10 rounded-full blur-[80px] pointer-events-none opacity-50"
+></div>
+```
+
+## isMounted hydration pattern
+
+The greeting and about paragraphs contain raw HTML (via `{@html ...}`). Rendering them during SSR would cause a hydration mismatch because Svelte serialises translated strings differently on the server. To avoid this, a `isMounted` state flag gates the HTML output:
+
+```js +page.svelte
+let isMounted = $state(false);
+onMount(() => {
+  isMounted = true;
+});
+```
+
+```html +page.svelte
+{#if isMounted}
+  {@html greeting}
+{:else}
+  <span style="visibility: hidden;">&nbsp;</span>
+{/if}
+```
+
+While `isMounted` is `false` an invisible placeholder with identical height keeps the layout stable so there is no layout shift after hydration.
+
+The same pattern wraps `about_p1` and `about_p2` inside the about card.
+
+## randomDescription
+
+The `<meta name="description">` and Open Graph description tags are populated with a random entry from `siteConfig.descriptions` each time the page renders:
+
+```js +page.svelte
+const randomDescription =
+  siteConfig.descriptions[
+    Math.floor(Math.random() * siteConfig.descriptions.length)
+  ];
+```
+
+The pool of descriptions lives in `src/lib/config.js`:
+
+```js config.js
+descriptions: [
+  "// is that the tempo i'm meant to follow?",
+  "// if i live to be a weathervane, always poining off, to lead you along the flyway",
+  "// rain or shine, im by your side, so why won't you look my way?",
+  "// oh, to be your constant companion!",
+  "// cadmium colors painted inside me",
+  "// その過去を 捨てて ここまで おいで",
+  "// as long as there are stars up above",
+  "// baby do you know what you wanna hear?",
+],
+```
+
+## i18n translation keys
+
+All visible text on the home page is retrieved through `$t()` from `svelte-i18n`.
+
+| Key | English value |
+|-----|---------------|
+| `home.title` | `@seleneftw / home` |
+| `home.greeting` | `hi, i'm {name}.` |
+| `home.short_for` | `short for Selene` |
+| `home.who_am_i` | `who am i?` |
+| `home.about_p1` | Bio paragraph 1 (contains inline `<span>` highlights) |
+| `home.about_p2` | Bio paragraph 2 (contains inline `<span>` highlights) |
+
+The `greeting` key accepts a `name` value that is interpolated as a styled `<span>` with accent color and glow:
+
+```js +page.svelte
+let greeting = $derived($t("home.greeting", {
+  values: {
+    name: `<span class="font-bold text-accent" style="text-shadow: 0 0 20px rgba(var(--accent-rgb), 0.7), 0 0 40px rgba(var(--accent-rgb), 0.3);">${name}</span>`,
+  },
+}));
+```
+
+Because the value contains HTML it must be rendered with `{@html greeting}`, which is why the `isMounted` guard is required.
+
+## StatsFM widget
+
+The music card embeds the `StatsFM` component, which polls `beta-api.stats.fm` every 20 seconds for the currently streaming track of the configured user (`siteConfig.statsFmUser = "iriel"`). When a track is active it:
+
+- Displays album art with an ambilight glow effect.
+- Shows a "now playing on" badge; falls back to "Last Played on" when nothing is active.
+- Extracts the dominant color from the album art and updates `--accent` and `--accent-rgb` CSS variables site-wide.
+- Caches the last successful response in `sessionStorage` under the key `statsfm_widget_cache_v1` with a 2-minute TTL.
+
+## Clock widget
+
+The clock card embeds the `Clock` component, which uses `setInterval` (1 second) to keep a `time` state variable up to date, formatted with `toLocaleTimeString("en-GB", { hour12: false })`:
+
+```js Clock.svelte
+function updateTime() {
+  const now = new Date();
+  time = now.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+$effect(() => {
+  updateTime();
+  let interval = setInterval(updateTime, 1000);
+  return () => clearInterval(interval);
+});
+```
+
+The time is rendered by a `Ticker` component for smooth digit transitions. A static label `"in Bologna, Italy"` provides geographic context below the clock face.

@@ -1,0 +1,235 @@
+---
+title: "Internationalization"
+description: "How the svelte-i18n locale system works, including locale detection, persistence, and translation keys"
+---
+
+The site uses [svelte-i18n](https://github.com/kaisermann/svelte-i18n) to deliver fully translated UI across four locales. All translation data is bundled at build time — no runtime fetching required.
+
+## Supported Locales
+
+<CardGroup cols={4}>
+  <Card title="English" icon="flag">
+    `en` — default fallback
+  </Card>
+  <Card title="Italian" icon="flag">
+    `it` — italiano
+  </Card>
+  <Card title="German" icon="flag">
+    `de` — Deutsch
+  </Card>
+  <Card title="Spanish" icon="flag">
+    `es` — español
+  </Card>
+</CardGroup>
+
+## Setup: Registering Messages
+
+All locale bundles are imported statically and registered with `addMessages` in `src/lib/locales/i18n.js`.
+
+```js
+import { addMessages, init, getLocaleFromNavigator, locale } from 'svelte-i18n';
+import enMessages from './data/en.json';
+import itMessages from './data/it.json';
+import deMessages from './data/de.json';
+import esMessages from './data/es.json';
+
+addMessages('en', enMessages);
+addMessages('it', itMessages);
+addMessages('de', deMessages);
+addMessages('es', esMessages);
+```
+
+## Locale Detection
+
+On the client, the desired locale is resolved at module evaluation time before `init()` is called.
+
+<Steps>
+  <Step title="Check the locale cookie">
+    `getCookie('locale')` reads `document.cookie` client-side. Returns `null` on the server (where `document` is `undefined`).
+
+    ```js
+    const getCookie = (name) => {
+      if (typeof document === 'undefined') return null;
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return null;
+    };
+    ```
+  </Step>
+  <Step title="Fall back to browser navigator">
+    If no cookie is found, `getLocaleFromNavigator()` from svelte-i18n reads `navigator.language`.
+  </Step>
+  <Step title="Normalize and validate">
+    `normalizeLocale` strips the region subtag (e.g. `en-US` → `en`) and checks the result against the supported set. Anything unrecognised falls back to `'en'`.
+
+    ```js
+    const supportedLocales = new Set(['en', 'it', 'de', 'es']);
+
+    const normalizeLocale = (value) => {
+      if (!value || typeof value !== 'string') return 'en';
+      const normalized = value.toLowerCase().split('-')[0];
+      return supportedLocales.has(normalized) ? normalized : 'en';
+    };
+    ```
+  </Step>
+  <Step title="Apply the resolved locale">
+    The final desired locale is stored before `init()` is called:
+
+    ```js
+    const desiredClientLocale =
+      typeof window !== 'undefined'
+        ? normalizeLocale(getCookie('locale') || getLocaleFromNavigator())
+        : 'en';
+    ```
+  </Step>
+</Steps>
+
+## The Hydration Trick
+
+SvelteKit performs SSR with a fixed `initialLocale: 'en'`. Switching to the user's preferred locale immediately in the module would cause a `hydration_html_changed` warning because the server-rendered HTML (in English) would no longer match the client's first render.
+
+The fix is to defer the locale switch by one animation frame:
+
+```js
+const initialLocale = 'en';
+
+init({
+  fallbackLocale: 'en',
+  initialLocale,
+});
+
+if (typeof window !== 'undefined') {
+  // Apply saved locale after hydration to avoid hydration_html_changed warnings.
+  if (desiredClientLocale !== initialLocale) {
+    requestAnimationFrame(() => {
+      locale.set(desiredClientLocale);
+    });
+  }
+}
+```
+
+<Note>
+  `requestAnimationFrame` fires after the browser has committed the hydrated DOM, so the locale switch happens on the next paint — after Svelte's hydration check has already passed.
+</Note>
+
+## Cookie Persistence
+
+Any time the locale store changes, the new value is written to a long-lived cookie so the preference survives across sessions:
+
+```js
+locale.subscribe((newLocale) => {
+  if (newLocale) {
+    document.cookie = `locale=${newLocale}; max-age=31536000; path=/; samesite=lax`;
+  }
+});
+```
+
+| Attribute | Value |
+|-----------|-------|
+| `max-age` | `31536000` (1 year) |
+| `path` | `/` |
+| `samesite` | `lax` |
+
+## Using Translations in Components
+
+The `$t()` store function is the primary way to look up a translation key at runtime.
+
+### Interpolated strings
+
+The `{name}` placeholder in the JSON is filled by passing a `values` object:
+
+```svelte
+<script>
+  import { t } from 'svelte-i18n';
+  import { siteConfig } from '$lib/config.js';
+</script>
+
+<h1>{$t("home.greeting", { values: { name: siteConfig.name } })}</h1>
+```
+
+### Structured data with `$json()`
+
+For keys that hold arrays or objects, `$json()` returns the raw JSON value instead of a rendered string. The `/uses` page uses this to iterate over gear categories without defining the list in component code:
+
+```svelte
+<script>
+  import { json } from 'svelte-i18n';
+</script>
+
+{#each $json("uses.categories") as category}
+  <section>
+    <h2>{category.title}</h2>
+    {#each category.items as item}
+      <a href={item.url}>{item.name} — {item.description}</a>
+    {/each}
+  </section>
+{/each}
+```
+
+## Translation Key Namespaces
+
+| Namespace | Description |
+|-----------|-------------|
+| `nav` | Navigation link labels |
+| `home` | Hero section, about paragraphs, footer quote |
+| `projects` | Page titles, section headers, error messages |
+| `contact` | Contact page headings, availability copy |
+| `uses` | `/uses` page copy and the full gear `categories` array |
+
+## The `home.greeting` Key Across All Locales
+
+<Tabs>
+  <Tab title="English">
+    ```json
+    "greeting": "hi, i'm {name}."
+    ```
+
+    Renders as: **hi, i'm Sel.**
+  </Tab>
+  <Tab title="Italian">
+    ```json
+    "greeting": "ciao, mi chiamo {name}."
+    ```
+
+    Renders as: **ciao, mi chiamo Sel.**
+  </Tab>
+  <Tab title="German">
+    ```json
+    "greeting": "hallo, ich bin {name}."
+    ```
+
+    Renders as: **hallo, ich bin Sel.**
+  </Tab>
+  <Tab title="Spanish">
+    ```json
+    "greeting": "hola, soy {name}."
+    ```
+
+    Renders as: **hola, soy Sel.**
+  </Tab>
+</Tabs>
+
+## Layout Integration
+
+The layout waits for locale data to be ready before revealing the page, showing a spinner in the interim:
+
+```svelte
+<script>
+  import { isLoading, waitLocale, locale } from 'svelte-i18n';
+
+  let localeLoaded = $state(false);
+
+  onMount(async () => {
+    await waitLocale();
+    localeLoaded = true;
+  });
+</script>
+
+<!-- Re-render the page tree whenever the active locale changes -->
+{#key $locale}
+  {@render children()}
+{/key}
+```
+
+The `{#key $locale}` block forces a full subtree re-render when the user switches language, ensuring no stale translated strings remain in the DOM.

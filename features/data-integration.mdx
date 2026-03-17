@@ -1,0 +1,386 @@
+---
+title: "Data Integration"
+description: "GitHub REST API and Stats.fm API integrations with caching and error handling"
+---
+
+The site pulls live data from two external APIs: the GitHub REST API (server-side, cached) and the Stats.fm API (client-side, polled). Both integrations include their own caching layers and graceful error handling.
+
+<Tabs>
+  <Tab title="GitHub">
+
+## GitHub Integration
+
+Repository data for the Projects page is fetched in a SvelteKit server `load` function, keeping API credentials and rate-limit handling entirely server-side.
+
+### In-Memory Cache
+
+A module-level `cache` object persists across requests for the lifetime of the server process. The TTL is **1 day** (86 400 000 ms).
+
+```js
+let cache = {
+    data: null,
+    timestamp: 0
+};
+
+const CACHE_DURATION = 1 * 24 * 60 * 60 * 1000; // 1 day
+```
+
+If the cache is still warm, the cached result is returned immediately without hitting the API. Either way, a `Cache-Control: public, max-age=86400` header is set so CDN and browser caches can also hold the response for a day.
+
+### Full Load Function
+
+```js
+import { siteConfig } from '$lib/config.js';
+
+let cache = {
+    data: null,
+    timestamp: 0
+};
+
+const CACHE_DURATION = 1 * 24 * 60 * 60 * 1000; // 1 day
+
+export const load = async ({ fetch, setHeaders }) => {
+    try {
+        const now = Date.now();
+        if (cache.data && (now - cache.timestamp) < CACHE_DURATION) {
+            setHeaders({
+                'Cache-Control': 'public, max-age=86400'
+            });
+            return cache.data;
+        }
+
+        setHeaders({
+            'Cache-Control': 'public, max-age=86400'
+        });
+
+        const res = await fetch(`https://api.github.com/users/${siteConfig.github}/repos?sort=updated&per_page=30`);
+        
+        if (!res.ok) {
+            console.error('GitHub API error:', res.statusText);
+            return cache.data || { projects: [], stats: null };
+        }
+        
+        const repos = await res.json();
+        
+        if (!Array.isArray(repos)) {
+            return { projects: [], stats: null };
+        }
+
+        const nonForks = repos.filter(repo => !repo.fork).slice(0, 12);
+
+        let totalStars = 0;
+        const languageCounts = {};
+
+        const projects = nonForks.map(repo => {
+            totalStars += repo.stargazers_count;
+            
+            let tags = [];
+            const isPersonal = repo.name.toLowerCase() === repo.owner.login.toLowerCase();
+
+            if (repo.language) {
+                const lang = repo.language;
+                languageCounts[lang] = (languageCounts[lang] || 0) + 1;
+                tags.push(lang.toLowerCase());
+            } else if (isPersonal) {
+                languageCounts['Markdown'] = (languageCounts['Markdown'] || 0) + 1;
+            }
+            
+            if (isPersonal && !tags.includes('markdown')) {
+                tags.push('markdown');
+            }
+            
+            return {
+                title: repo.name.toLowerCase(),
+                description: repo.description ? repo.description.toLowerCase() : 'no description provided.',
+                link: repo.html_url,
+                pushedAt: repo.pushed_at,
+                tags
+            };
+        });
+
+        if (languageCounts['Batchfile']) {
+            languageCounts['Shell'] = (languageCounts['Shell'] || 0) + languageCounts['Batchfile'];
+        }
+
+        const omittedLanguages = ['Makefile', 'Dockerfile', 'AutoHotkey', 'Batchfile'];
+        omittedLanguages.forEach(lang => {
+            delete languageCounts[lang];
+        });
+
+        const totalLanguages = Object.values(languageCounts).reduce((a, b) => a + b, 0) || 1;
+
+        const langColors = {
+            'JavaScript': '#f1e05a',
+            'TypeScript': '#3178c6',
+            'Python': '#3572A5',
+            'Svelte': '#ff3e00',
+            'HTML': '#e34c26',
+            'CSS': '#563d7c',
+            'Rust': '#dea584',
+            'Go': '#00add8',
+            'Java': '#b07219',
+            'C++': '#f34b7d',
+            'C': '#555555',
+            'C#': '#178600',
+            'PHP': '#4f5d95',
+            'Ruby': '#701516',
+            'Shell': '#89e051',
+            'Vue': '#41b883',
+            'Lua': '#000080',
+            'Sass': '#a53b70',
+            'Markdown': '#083fa1'
+        };
+
+        const topLanguages = Object.entries(languageCounts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([lang, count]) => {
+                const exactPct = (count / totalLanguages) * 100;
+                return {
+                    name: lang.toLowerCase(),
+                    percent: exactPct,
+                    displayPercent: Math.round(exactPct),
+                    count: count,
+                    color: langColors[lang] || '#8b8b8b'
+                };
+            });
+
+        const stats = {
+            totalRepos: nonForks.length,
+            totalStars,
+            topLanguages
+        };
+
+        const result = { projects, stats };
+        
+        cache.data = result;
+        cache.timestamp = Date.now();
+
+        return result;
+    } catch (e) {
+        console.error('Error fetching projects:', e);
+        return cache.data || { projects: [], stats: null };
+    }
+};
+```
+
+### API Request
+
+The API URL is constructed from `siteConfig.github` (`"allocazione"`):
+
+```
+https://api.github.com/users/allocazione/repos?sort=updated&per_page=30
+```
+
+The `sort=updated` parameter returns the 30 most recently pushed repositories. Forks are filtered out, then the result is sliced to a maximum of **12** repos:
+
+```js
+const nonForks = repos.filter(repo => !repo.fork).slice(0, 12);
+```
+
+### Project Data Shape
+
+Each project object returned by `load` has the following shape:
+
+```ts
+{
+  title: string;        // repo.name, lowercased
+  description: string;  // repo.description lowercased, or "no description provided."
+  link: string;         // repo.html_url
+  pushedAt: string;     // repo.pushed_at (ISO 8601)
+  tags: string[];       // language name(s), lowercased
+}
+```
+
+### Language Breakdown
+
+The `stats.topLanguages` array powers the language breakdown bar shown below the project grid.
+
+**Normalization rules applied before counting:**
+
+- `Batchfile` repo count is merged into `Shell`
+- The following languages are then deleted entirely from the counts:
+
+```js
+const omittedLanguages = ['Makefile', 'Dockerfile', 'AutoHotkey', 'Batchfile'];
+```
+
+**Percentage calculation:**
+
+```js
+const totalLanguages = Object.values(languageCounts).reduce((a, b) => a + b, 0) || 1;
+
+const exactPct = (count / totalLanguages) * 100;
+```
+
+Each entry in `topLanguages` exposes both the exact float (`percent`) and a rounded integer (`displayPercent`) so the UI can use `Math.round` without re-computing it.
+
+### Language Color Map
+
+Colors are sourced from GitHub's own language color conventions:
+
+```js
+const langColors = {
+    'JavaScript': '#f1e05a',
+    'TypeScript': '#3178c6',
+    'Python': '#3572A5',
+    'Svelte': '#ff3e00',
+    'HTML': '#e34c26',
+    'CSS': '#563d7c',
+    'Rust': '#dea584',
+    'Go': '#00add8',
+    'Java': '#b07219',
+    'C++': '#f34b7d',
+    'C': '#555555',
+    'C#': '#178600',
+    'PHP': '#4f5d95',
+    'Ruby': '#701516',
+    'Shell': '#89e051',
+    'Vue': '#41b883',
+    'Lua': '#000080',
+    'Sass': '#a53b70',
+    'Markdown': '#083fa1'
+};
+```
+
+Any language not present in this map falls back to `'#8b8b8b'`.
+
+### Error Handling
+
+| Condition | Behaviour |
+|-----------|-----------|
+| `res.ok` is false | Logs error; returns stale cache or `{ projects: [], stats: null }` |
+| `repos` is not an array | Returns `{ projects: [], stats: null }` immediately |
+| Unhandled exception | Caught by outer `try/catch`; returns stale cache or empty state |
+
+  </Tab>
+  <Tab title="Stats.fm">
+
+## Stats.fm Integration
+
+The `StatsFM` widget (`src/lib/components/widgets/StatsFM.svelte`) displays the currently playing or most recently played track for the user `iriel` (`siteConfig.statsFmUser`).
+
+### API Endpoints Used
+
+```
+# Currently playing
+https://beta-api.stats.fm/api/v1/users/iriel/streams/current
+
+# Most recent stream (fallback when not currently playing)
+https://beta-api.stats.fm/api/v1/users/iriel/streams/recent?limit=1
+
+# Album detail (to resolve Spotify deep-link URL)
+https://beta-api.stats.fm/api/v1/albums/{albumId}
+
+# Artist detail (to resolve Spotify deep-link URL)
+https://beta-api.stats.fm/api/v1/artists/{artistId}
+```
+
+### Fetch Logic
+
+```js
+const fetchStats = async () => {
+  try {
+    const res = await fetch(
+      `https://beta-api.stats.fm/api/v1/users/${siteConfig.statsFmUser}/streams/current`,
+    );
+
+    if (!res.ok) {
+      throw new Error('Stats.fm API error');
+    }
+
+    const rawData = await res.json();
+
+    if (rawData && rawData.item) {
+      data = rawData.item;
+      error = false;
+      if (data.track) {
+        fetchSpotifyUrls(data.track);
+        updateAccentColor(data.track.albums[0]?.image);
+        writeCache();
+      }
+    } else {
+      // Not currently playing — fall back to most recent stream
+      const recentRes = await fetch(
+        `https://beta-api.stats.fm/api/v1/users/${siteConfig.statsFmUser}/streams/recent?limit=1`,
+      );
+      if (recentRes.ok) {
+        const recentData = await recentRes.json();
+        if (recentData?.items?.length > 0) {
+          data = {
+            isPlaying: false,
+            track: recentData.items[0].track,
+          };
+          // ...
+        } else {
+          error = true;
+        }
+      } else {
+        error = true;
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching Stats.fm data:', err);
+    if (!data?.track) {
+      error = true;
+    }
+  } finally {
+    loading = false;
+  }
+};
+```
+
+### Client-Side Cache
+
+The widget caches the last successful response in `sessionStorage` with a **120-second TTL** to avoid hammering the API on every re-mount:
+
+```js
+const CACHE_KEY = 'statsfm_widget_cache_v1';
+const CACHE_TTL_MS = 120000;
+```
+
+On mount, the cached value is loaded immediately (so the widget shows data without a loading flash), then a live fetch runs in the background to refresh it. Polling continues every **20 seconds** while the component is mounted:
+
+```js
+fetchStats();
+const pollingInterval = setInterval(fetchStats, 20000);
+
+return () => {
+  if (browser && pollingInterval) {
+    clearInterval(pollingInterval);
+  }
+};
+```
+
+### What the Widget Displays
+
+| State | Display |
+|-------|---------|
+| Loading | Animated skeleton (pulse) |
+| Error / no track data | `// offline...` |
+| Currently playing | Album art with ambilight glow + "now playing on" label + scrolling track & artist names |
+| Not playing | Same layout with "Last Played on" label |
+
+Artist names and album art are linked to their Spotify pages via IDs resolved through the Stats.fm album/artist detail endpoints.
+
+### Accent Color Side Effect
+
+Every time a new track loads, the widget extracts the dominant color from the album artwork using a 1×1 canvas sample and calls `updateAccentColor`. This updates `--accent` / `--accent-rgb` on `document.documentElement` and persists the value in the `accent_color` cookie. See [Accent Color System](/features/accent-color) for details.
+
+### CSP Configuration
+
+The `Content-Security-Policy` header set in `hooks.server.js` explicitly allows the Stats.fm API origin:
+
+```
+connect-src 'self' https://beta-api.stats.fm https://api.github.com
+```
+
+Images from the Stats.fm CDN and Spotify CDN are permitted via:
+
+```
+img-src 'self' data: https://github.com https://*.githubusercontent.com
+        https://cdn.stats.fm https://*.stats.fm
+        https://i.scdn.co https://mosaic.scdn.com ...
+```
+
+  </Tab>
+</Tabs>

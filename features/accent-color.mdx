@@ -1,0 +1,178 @@
+---
+title: "Accent Color System"
+description: "How the per-visitor dynamic accent color is generated, persisted, and injected server-side to prevent flash of unstyled content"
+---
+
+Every visitor gets a unique accent color that is applied to glow effects, borders, and interactive elements across the entire site. The color is persisted in a cookie and injected into the HTML template on the server before the page is sent to the browser — eliminating any flash of unstyled content.
+
+<Note>
+  The default accent color is `#e16666` (a muted red). This is used on the very first visit before a random color is assigned client-side, and also acts as the server-side fallback when no `accent_color` cookie is present.
+</Note>
+
+## Full Flow
+
+<Steps>
+  <Step title="Server reads the accent_color cookie">
+    `hooks.server.js` runs on every request. It reads the `accent_color` cookie (defaulting to `#e16666`) and converts it to a comma-separated RGB string.
+
+    ```js
+    const accentColor = event.cookies.get('accent_color') || '#e16666';
+
+    const hexToRgbStr = (hex) => {
+      if (!hex || hex.length < 7) return '225, 102, 102';
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `${r}, ${g}, ${b}`;
+    };
+
+    const accentRgb = hexToRgbStr(accentColor);
+    ```
+  </Step>
+  <Step title="Placeholders are replaced in the HTML template">
+    SvelteKit's `transformPageChunk` hook replaces `%accent%` and `%accent_rgb%` in the HTML before it is streamed to the client. These placeholders live in `app.html`.
+
+    ```js
+    const response = await resolve(event, {
+      transformPageChunk: ({ html }) =>
+        html
+          .replace('%accent%', accentColor)
+          .replace('%accent_rgb%', accentRgb)
+    });
+    ```
+  </Step>
+  <Step title="CSS variables are set inline in app.html">
+    The `app.html` template contains `%sveltekit.head%` where the following `<style>` block referencing the placeholders is injected:
+
+    ```html
+    <style>
+      :root {
+        --accent: %accent%;
+        --accent-rgb: %accent_rgb%;
+      }
+    </style>
+    ```
+
+    By the time the first byte reaches the browser, `--accent` and `--accent-rgb` already have the correct values — no layout shift or color flash.
+  </Step>
+  <Step title="Client generates a random color on the first visit">
+    When no `accent_color` cookie exists (first-time visitor), `+layout.svelte` generates a random light color in `onMount` and immediately writes it to the cookie and the CSS variables.
+
+    ```js
+    if (!getCookie('accent_color')) {
+      const pickLight = () =>
+        Math.floor(128 + Math.random() * 127)
+          .toString(16)
+          .padStart(2, '0');
+      const randomColor = `#${pickLight()}${pickLight()}${pickLight()}`;
+      document.cookie = `accent_color=${encodeURIComponent(randomColor)}; max-age=31536000; path=/; samesite=lax`;
+
+      document.documentElement.style.setProperty('--accent', randomColor);
+      document.documentElement.style.setProperty(
+        '--accent-rgb',
+        hexToRgbStr(randomColor),
+      );
+    }
+    ```
+
+    `pickLight()` generates each RGB channel in the range `[128, 255]`, ensuring the color is always light enough to be legible against a dark background.
+  </Step>
+</Steps>
+
+## Server Hook: Complete Code
+
+```js
+export const handle = async ({ event, resolve }) => {
+  const accentColor = event.cookies.get('accent_color') || '#e16666';
+
+  const hexToRgbStr = (hex) => {
+    if (!hex || hex.length < 7) return '225, 102, 102';
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `${r}, ${g}, ${b}`;
+  };
+
+  const accentRgb = hexToRgbStr(accentColor);
+
+  const response = await resolve(event, {
+    transformPageChunk: ({ html }) =>
+      html
+        .replace('%accent%', accentColor)
+        .replace('%accent_rgb%', accentRgb)
+  });
+
+  response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  response.headers.set(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: https://github.com https://*.githubusercontent.com https://cdn.stats.fm https://*.stats.fm https://i.scdn.co https://mosaic.scdn.com https://is1-ssl.mzstatic.com https://www.transparenttextures.com",
+      "connect-src 'self' https://beta-api.stats.fm https://api.github.com",
+      "frame-ancestors 'none'"
+    ].join('; ')
+  );
+
+  return response;
+};
+```
+
+## CSS Variable Usage
+
+Once set, `--accent` and `--accent-rgb` can be referenced anywhere in the stylesheet:
+
+```css
+/* Solid accent color */
+.text-accent {
+  color: var(--accent);
+}
+
+/* Semi-transparent glow — only possible because the RGB triplet is stored separately */
+.glow {
+  box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.7);
+}
+
+/* Used in Tailwind via the CSS variable */
+.border-accent\/20 {
+  border-color: rgba(var(--accent-rgb), 0.2);
+}
+```
+
+The reason `--accent-rgb` exists as a separate variable (rather than just using `--accent`) is that CSS `rgba()` requires individual channel values — you cannot pass a hex string directly into `rgba()`.
+
+## Reactive Theme State
+
+The `StatsFM` widget updates the accent color dynamically when album art loads, extracting the dominant color from the artwork. It writes the new value back through `themeState` from `src/lib/state.svelte.js`:
+
+```js
+// src/lib/state.svelte.js
+export const themeState = $state({
+    accentColor: null,
+    accentRgb: null
+});
+```
+
+When a new track is detected, the widget:
+1. Samples the album art image via a 1×1 canvas pixel
+2. Boosts the luminance to at least `0.6` (so it remains light on the dark background)
+3. Updates `themeState.accentColor` and `themeState.accentRgb`
+4. Sets `--accent` / `--accent-rgb` on `document.documentElement`
+5. Persists the new hex value to the `accent_color` cookie
+
+This means the site's color scheme shifts in real time as music changes.
+
+## Cookie Specification
+
+| Attribute | Value |
+|-----------|-------|
+| Name | `accent_color` |
+| Value | URL-encoded hex string, e.g. `%23ff8844` |
+| `max-age` | `31536000` (1 year) |
+| `path` | `/` |
+| `samesite` | `lax` |

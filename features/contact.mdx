@@ -1,0 +1,106 @@
+---
+title: "Contact"
+description: "Social presence and direct contact information"
+---
+
+The contact page (`/contact`) provides visitors with ways to reach Sel directly via email and through social platforms.
+
+## Page layout
+
+The page uses a `md:grid-cols-3` two-panel layout:
+
+<CardGroup cols={2}>
+  <Card title="Main panel" icon="mail">
+    `md:col-span-2` — Contains the availability status, preferred contact protocol, and the primary email CTA button.
+  </Card>
+  <Card title="Presence panel" icon="link">
+    `md:col-span-1` — Lists all social links from `siteConfig.socials` as interactive rows.
+  </Card>
+</CardGroup>
+
+## i18n keys
+
+All visible strings are resolved through `$t()`. The full set of keys used on this page:
+
+| Key | English value |
+|-----|---------------|
+| `contact.title` | `@seleneftw / contact` |
+| `contact.header` | `contact.` |
+| `contact.subheader` | `available for strategic research collaborations, software development engagements, and technical security consulting.` |
+| `contact.reach_out` | `feel free to reach out by email or dm for collaborations, questions or just to say hi!` |
+| `contact.availability` | `availability` |
+| `contact.availability_desc` | `down for cool projects, research, or interesting collaborations` |
+| `contact.protocol` | `protocol` |
+| `contact.protocol_desc` | `dms are always open for a quick chat!` |
+| `contact.email_me` | `email me` |
+| `contact.direct_inquiry` | `direct inquiry` |
+| `contact.presence` | `presence` |
+| `contact.waiting_signal` | `// waiting for signal` |
+
+## Email
+
+The email address is read from `siteConfig.email`:
+
+```js config.js
+email: "me@allocazione.dev"
+```
+
+It is used in two places on the page:
+
+1. The `mailto:` href on the primary CTA button:
+
+```html contact/+page.svelte
+<Button href={`mailto:${email}`}>
+  {$t("contact.email_me")}
+  <span class="ml-2 text-accent">&lt;/&gt;</span>
+</Button>
+```
+
+2. A plain-text display below the button under the `direct_inquiry` label.
+
+## Social links
+
+The presence panel iterates over `siteConfig.socials`:
+
+```js config.js
+socials: [
+  { name: "GitHub",   url: "https://github.com/allocazione" },
+  { name: "Discord",  url: "https://discord.com/users/659022591071223819" },
+  { name: "Telegram", url: "https://t.me/seleneftw" },
+  { name: "Steam",    url: "https://steamcommunity.com/id/seloris" }
+]
+```
+
+Each entry is rendered as an anchor that opens in a new tab with `rel="noopener noreferrer"`. On hover the row border transitions to `accent/40` and an arrow icon shifts right:
+
+```html contact/+page.svelte
+{#each siteConfig.socials as social}
+  <a
+    href={social.url}
+    target="_blank"
+    rel="noopener noreferrer"
+    class="flex items-center justify-between p-4 rounded-2xl bg-white/2 border border-[#252525] hover:border-accent/40 hover:bg-white/5 transition-all duration-500 group/social"
+  >
+    <span class="text-sm text-gray-300 lowercase font-light group-hover/social:text-white transition-colors">
+      {social.name}
+    </span>
+    ...
+  </a>
+{/each}
+```
+
+At the bottom of the presence panel a pulsing label reads `"// waiting for signal"` as a decorative footer element.
+
+## Main panel sections
+
+<AccordionGroup>
+  <Accordion title="Availability">
+    A labeled block using `contact.availability` as the heading and `contact.availability_desc` as the body. Describes openness to cool projects, research, and interesting collaborations.
+  </Accordion>
+  <Accordion title="Protocol">
+    A labeled block using `contact.protocol` as the heading and `contact.protocol_desc` as the body. Indicates that DMs are always open for quick chats.
+  </Accordion>
+  <Accordion title="Direct inquiry">
+    Displayed below the email CTA button. Shows the raw `siteConfig.email` value (`me@allocazione.dev`) under the `contact.direct_inquiry` label for visitors who prefer to copy the address manually.
+  </Accordion>
+</AccordionGroup>

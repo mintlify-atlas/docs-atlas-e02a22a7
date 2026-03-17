@@ -1,0 +1,184 @@
+---
+title: "Project Structure"
+description: "File layout and module organization of the allocazione.dev codebase"
+---
+
+The allocazione.dev portfolio is built with **Svelte 5** (Runes) and **SvelteKit 2** in static-generation mode. Every piece of the project has a deliberate location — this page walks through the full directory tree and explains why each part lives where it does.
+
+## Directory tree
+
+```text
+src/
+├── lib/
+│   ├── actions/          # DOM-level interaction modules (e.g. tooltip)
+│   ├── components/
+│   │   ├── ui/           # Atomic UI elements (Button, Nav, Ticker)
+│   │   └── widgets/      # Integrated feature modules (Clock, StatsFM)
+│   ├── locales/          # I18n logic and data
+│   │   ├── data/         # Translation JSON schemas (en, it, de, es)
+│   │   └── i18n.js       # Locale registration and store initialization
+│   ├── config.js         # Site-wide data configuration
+│   └── state.svelte.js   # Shared reactive state (Svelte 5 Runes)
+├── routes/               # File-based routing system
+│   ├── +layout.js        # Root layout config (prerender, trailingSlash)
+│   ├── +layout.svelte    # Root layout component (Nav, transitions)
+│   ├── +page.svelte      # Home page
+│   ├── +error.svelte     # Custom error page
+│   ├── contact/          # /contact route
+│   ├── projects/         # /projects route
+│   └── uses/             # /uses route
+├── app.css               # Global styling and Tailwind design tokens
+├── app.html              # HTML shell with CSS variable placeholders
+└── hooks.server.js       # Server hooks (FOUC prevention, security headers)
+```
+
+## Directory-by-directory breakdown
+
+<CardGroup cols={2}>
+  <Card title="src/lib/actions/" icon="zap">
+    DOM-level interaction modules. Contains directives such as `tooltip` that attach directly to HTML elements via Svelte's `use:` action API.
+  </Card>
+  <Card title="src/lib/components/ui/" icon="layout">
+    Atomic, reusable UI elements: `Nav`, `Button`, `Ticker`, and similar primitives. These have no external data dependencies and can be composed freely.
+  </Card>
+  <Card title="src/lib/components/widgets/" icon="box">
+    Integrated feature modules such as `Clock` and `StatsFM` that fetch or consume external data (GitHub API, Stats.fm API). More opinionated than `ui/` components.
+  </Card>
+  <Card title="src/lib/locales/" icon="globe">
+    All internationalization assets. `data/` holds per-locale JSON schemas; `i18n.js` registers them with `svelte-i18n` and initializes the locale store.
+  </Card>
+  <Card title="src/routes/" icon="map">
+    SvelteKit's file-based routing tree. Each sub-directory becomes a URL segment. Special filenames (`+page.svelte`, `+layout.svelte`) are picked up automatically by the framework.
+  </Card>
+  <Card title="src/lib/config.js" icon="settings">
+    The single source of truth for the entire site. Every piece of personalisation — name, profession, social links, Stats.fm username — is declared here and imported wherever it is needed.
+  </Card>
+</CardGroup>
+
+## SvelteKit file-based routing
+
+SvelteKit uses a convention-over-configuration approach to routing. The filename determines both the URL and the role of each file.
+
+<AccordionGroup>
+  <Accordion title="+page.svelte — route components">
+    Each `+page.svelte` file maps to a URL. A file at `src/routes/contact/+page.svelte` renders at `/contact/`. The component receives data from an optional co-located `+page.js` or `+page.server.js` loader.
+  </Accordion>
+  <Accordion title="+layout.svelte — shared shell">
+    A `+layout.svelte` wraps every route in the same directory and all nested routes. The root `src/routes/+layout.svelte` therefore wraps every page on the site. It renders the `<Nav>` component, handles locale loading, and manages the View Transition API.
+  </Accordion>
+  <Accordion title="+layout.js — layout configuration">
+    The root `src/routes/+layout.js` sets two SvelteKit options that apply to the entire site:
+
+    ```javascript
+    import '$lib/locales/i18n.js';
+
+    export const prerender = true;
+    export const trailingSlash = 'always';
+    ```
+
+    `prerender = true` tells SvelteKit to generate all pages as static HTML at build time. `trailingSlash = 'always'` ensures consistent URL canonicalisation on GitHub Pages and Cloudflare Pages.
+  </Accordion>
+  <Accordion title="+error.svelte — custom error page">
+    Renders whenever SvelteKit encounters an unhandled error or a 404. Placed at the root of `src/routes/` so it applies site-wide.
+  </Accordion>
+</AccordionGroup>
+
+## `src/lib/config.js` — single source of truth
+
+All personalisation data lives in one file. No page hard-codes a name, URL, or social link independently.
+
+```javascript
+export const siteConfig = {
+    name: "Sel",
+    profession: "Cybersecurity Intern, Malware Researcher and Linux Tinkerer",
+    skills: "optimizations and forensic security",
+    avatar: "https://github.com/allocazione.png",
+    email: "me@allocazione.dev", 
+    github: "allocazione",
+    statsFmUser: "iriel",
+    socials: [
+        { name: "GitHub", url: "https://github.com/allocazione" },
+        { name: "Discord", url: "https://discord.com/users/659022591071223819" },
+        { name: "Telegram", url: "https://t.me/seleneftw" },
+        { name: "Steam", url: "https://steamcommunity.com/id/seloris" }
+    ],
+    descriptions: [
+        "// is that the tempo i'm meant to follow?",
+        "// if i live to be a weathervane, always poining off, to lead you along the flyway",
+        "// rain or shine, im by your side, so why won't you look my way?",
+        "// oh, to be your constant companion!",
+        "// cadmium colors painted inside me",
+        "// その過去を 捨てて ここまで おいで", 
+        "// as long as there are stars up above",
+        "// baby do you know what you wanna hear?",
+    ],
+    lastUpdated: "2026-03-10"
+};
+```
+
+| Property | Type | Description |
+|---|---|---|
+| `name` | `string` | Used in page titles and greetings. |
+| `profession` | `string` | Professional title shown in the bio section. |
+| `socials` | `Array<Object>` | Map of social platforms and target URLs. |
+| `descriptions` | `Array<string>` | Randomised meta descriptions and ambient quote text. |
+| `statsFmUser` | `string` | Target username for the Stats.fm music integration. |
+| `lastUpdated` | `string` | ISO-formatted date for the `/uses` page update badge. |
+
+<Tip>
+  To update any profile information — name, links, or the music integration username — edit only `src/lib/config.js`. No other file needs to change.
+</Tip>
+
+## `src/lib/state.svelte.js` — reactive state
+
+Shared reactive state that needs to be accessible across components without prop-drilling is declared here using Svelte 5's `$state` rune.
+
+```javascript
+export const themeState = $state({
+    accentColor: null,
+    accentRgb: null
+});
+```
+
+The `$state` rune creates a reactive object at module scope. Any component that imports `themeState` and reads from it will automatically re-render when the values change. `accentColor` holds the current hex value of the user's chosen accent color, and `accentRgb` holds its pre-computed `r, g, b` string for use with Tailwind's `rgb()` utilities and CSS `opacity` modifiers.
+
+<Note>
+  Because this file uses the `.svelte.js` extension, Svelte's compiler processes it and the `$state` rune is valid outside of a `.svelte` component file.
+</Note>
+
+## `src/hooks.server.js` — server entry point
+
+SvelteKit calls the exported `handle` function on every request before the framework renders a page. This file has two responsibilities:
+
+1. **FOUC prevention** — reads the `accent_color` cookie and injects the correct CSS variables into the HTML shell *before* it reaches the browser, so the accent color is never wrong on first paint.
+2. **Security headers** — sets a strict set of response headers on every route.
+
+```javascript
+export const handle = async ({ event, resolve }) => {
+    const accentColor = event.cookies.get('accent_color') || '#e16666';
+
+    const hexToRgbStr = (hex) => {
+        if (!hex || hex.length < 7) return '225, 102, 102';
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `${r}, ${g}, ${b}`;
+    };
+
+    const accentRgb = hexToRgbStr(accentColor);
+
+    const response = await resolve(event, {
+        transformPageChunk: ({ html }) =>
+            html
+                .replace('%accent%', accentColor)
+                .replace('%accent_rgb%', accentRgb)
+    });
+
+    response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+    // ... additional security headers
+
+    return response;
+};
+```
+
+See [Core Systems](/architecture/core-systems) for the complete breakdown of how the accent color and security headers work end-to-end.

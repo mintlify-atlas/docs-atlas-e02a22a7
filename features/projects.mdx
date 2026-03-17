@@ -1,0 +1,191 @@
+---
+title: "Projects Archive"
+description: "GitHub-sourced project archive with language breakdown statistics"
+---
+
+The projects page (`/projects`) displays a card grid of public repositories pulled from GitHub, accompanied by a language breakdown bar.
+
+## Server-side data fetching
+
+All GitHub data is fetched in `+page.server.js` so it never runs in the browser. The `load` function is the sole data source for the page component via its `data` prop.
+
+### GitHub API endpoint
+
+```js +page.server.js
+const res = await fetch(
+  `https://api.github.com/users/${siteConfig.github}/repos?sort=updated&per_page=30`
+);
+```
+
+`siteConfig.github` is `"allocazione"`. The query fetches up to 30 repositories sorted by most-recently-updated.
+
+### Caching
+
+An in-memory module-level cache avoids hitting the GitHub API on every request. The cache duration is one day:
+
+```js +page.server.js
+let cache = {
+    data: null,
+    timestamp: 0
+};
+
+const CACHE_DURATION = 1 * 24 * 60 * 60 * 1000; // 1 day
+```
+
+On each request the loader checks whether a valid cached result exists before calling the API:
+
+```js +page.server.js
+const now = Date.now();
+if (cache.data && (now - cache.timestamp) < CACHE_DURATION) {
+    setHeaders({ 'Cache-Control': 'public, max-age=86400' });
+    return cache.data;
+}
+```
+
+The HTTP response always includes `Cache-Control: public, max-age=86400` regardless of whether the in-memory cache was hit.
+
+### Filtering
+
+After fetching, forked repositories are removed and the list is capped at 12 entries:
+
+```js +page.server.js
+const nonForks = repos.filter(repo => !repo.fork).slice(0, 12);
+```
+
+## Data shapes
+
+### `projects` array
+
+Each element of the returned `projects` array has the following shape:
+
+```js +page.server.js
+{
+  title: repo.name.toLowerCase(),
+  description: repo.description ? repo.description.toLowerCase() : 'no description provided.',
+  link: repo.html_url,
+  pushedAt: repo.pushed_at,
+  tags   // string[] of lowercase language names
+}
+```
+
+<Note>
+  If the repository name matches the owner login (i.e. it is a personal/profile repo), a `"markdown"` tag is automatically appended to `tags`.
+</Note>
+
+### `stats` object
+
+```js +page.server.js
+const stats = {
+    totalRepos: nonForks.length,  // number — repos analyzed
+    totalStars,                   // number — sum of stargazers_count
+    topLanguages                  // TopLanguage[]
+};
+```
+
+### `topLanguages` entry shape
+
+```js +page.server.js
+{
+  name: lang.toLowerCase(),       // e.g. "javascript"
+  percent: exactPct,              // float — exact percentage of total
+  displayPercent: Math.round(exactPct), // integer — shown in tooltip
+  count: count,                   // number of repos using this language
+  color: langColors[lang] || '#8b8b8b'  // hex color string
+}
+```
+
+## Language color map
+
+The loader maintains a hard-coded color map that maps GitHub language names to their canonical display colors:
+
+```js +page.server.js
+const langColors = {
+    'JavaScript': '#f1e05a',
+    'TypeScript': '#3178c6',
+    'Python':     '#3572A5',
+    'Svelte':     '#ff3e00',
+    'HTML':       '#e34c26',
+    'CSS':        '#563d7c',
+    'Rust':       '#dea584',
+    'Go':         '#00add8',
+    'Java':       '#b07219',
+    'C++':        '#f34b7d',
+    'C':          '#555555',
+    'C#':         '#178600',
+    'PHP':        '#4f5d95',
+    'Ruby':       '#701516',
+    'Shell':      '#89e051',
+    'Vue':        '#41b883',
+    'Lua':        '#000080',
+    'Sass':       '#a53b70',
+    'Markdown':   '#083fa1'
+};
+```
+
+Languages not present in this map fall back to `#8b8b8b`.
+
+## Omitted languages
+
+The following language names are removed from the breakdown before computing percentages:
+
+```js +page.server.js
+const omittedLanguages = ['Makefile', 'Dockerfile', 'AutoHotkey', 'Batchfile'];
+omittedLanguages.forEach(lang => {
+    delete languageCounts[lang];
+});
+```
+
+<Note>
+  `Batchfile` counts are merged into `Shell` before being deleted, so batch scripts contribute to the Shell slice of the bar rather than being discarded entirely:
+
+  ```js +page.server.js
+  if (languageCounts['Batchfile']) {
+      languageCounts['Shell'] = (languageCounts['Shell'] || 0) + languageCounts['Batchfile'];
+  }
+  ```
+</Note>
+
+## Language breakdown bar
+
+The page renders a thin horizontal bar (`h-1.5`) where each language is a proportionally-sized colored slice. Slices animate in with a `slideInFade` keyframe and show a tooltip with the language name and display percentage on hover.
+
+```html +page.svelte
+{#each data.stats.topLanguages as lang, i}
+  <div
+    style="width: {lang.percent}%; background-color: {lang.color}; animation-delay: {i * 100}ms;"
+    class="h-full hover:brightness-125 transition-all duration-300 cursor-default animate-stretch"
+    use:tooltip={`${lang.name} - ${lang.displayPercent}%`}
+  ></div>
+{/each}
+```
+
+Below the bar a legend lists each language with its dot, name, and repo count.
+
+## ProjectCard component
+
+Each project is rendered by `ProjectCard`, which accepts:
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `title` | `string` | Repository name (lowercase) |
+| `description` | `string` | Repository description (lowercase) |
+| `link` | `string` | URL to the GitHub repository |
+| `tags` | `string[]` | Language tags shown as pill badges |
+| `updatedAt` | `string \| null` | ISO date string (`pushed_at`) |
+| `external` | `boolean` | Opens link in a new tab when `true` |
+
+If the project title is `"allocazione.dev"` the description is overridden with the i18n key `projects.own_website` (`"this very own website source code!"`).
+
+## Error state
+
+If the GitHub API returns a non-OK response the loader returns `{ projects: [], stats: null }` (or the last valid cache if available). The page renders a fallback message:
+
+```html +page.svelte
+{#if data.projects.length === 0}
+  <p class="text-gray-500 font-['Space_Mono'] text-sm tracking-widest lowercase">
+    {$t("projects.github_error")}
+  </p>
+{/if}
+```
+
+The i18n value for `projects.github_error` is `"// signal lost. unable to fetch from github."`.

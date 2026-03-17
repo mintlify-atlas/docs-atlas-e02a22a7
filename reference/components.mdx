@@ -1,0 +1,328 @@
+---
+title: "Components"
+description: "Reference for all UI and widget components in the allocazione.dev codebase"
+---
+
+The component library is split into three layers:
+
+- **`src/lib/components/ui/`** — Atomic, reusable interface elements
+- **`src/lib/components/widgets/`** — Self-contained feature modules that fetch or compute their own data
+- **`src/lib/actions/`** — Svelte `use:` actions that attach behaviour to DOM nodes
+
+<Tabs>
+  <Tab title="UI Components">
+
+    ## `Nav.svelte`
+
+    **Location:** `src/lib/components/ui/Nav.svelte`
+
+    Fixed top navigation bar with a sliding highlight indicator and a locale-switcher dropdown. The component is self-contained — it derives its link labels from the `svelte-i18n` `$t` store and its active state from `$app/state`'s `page.url.pathname`.
+
+    **No props.** All state is internal.
+
+    **Behaviour highlights:**
+    - Renders four links: Home (`/`), Projects (`/projects/`), Uses (`/uses/`), Contact (`/contact/`)
+    - Language dropdown supports `en`, `it`, `de`, `es` with inline SVG flag icons
+    - Active link is tracked via exact pathname match (with trailing-slash fallback)
+    - Highlight `<div>` animates via CSS `transition-all` — disabled on mobile (`window.innerWidth < 640`)
+    - Closes the language dropdown on outside click
+    - Preload strategy is `"tap"` on desktop, `"off"` on mobile
+
+    ```svelte
+    <!-- Nav is rendered once in the root layout -->
+    <script>
+      import Nav from '$lib/components/ui/Nav.svelte';
+    </script>
+
+    <Nav />
+    ```
+
+    ---
+
+    ## `Button.svelte`
+
+    **Location:** `src/lib/components/ui/Button.svelte`
+
+    Atomic anchor-styled button. Renders an `<a>` tag with consistent dark-themed styling, optional external link handling, and a slot for arbitrary children.
+
+    <ResponseField name="href" type="string">
+      Navigation target. Defaults to `'#'`.
+    </ResponseField>
+
+    <ResponseField name="external" type="boolean">
+      When `true`, adds `target="_blank"` and `rel="noopener noreferrer"`. Defaults to `false`.
+    </ResponseField>
+
+    <ResponseField name="children" type="Snippet" required>
+      Content rendered inside the button via `{@render children()}`.
+    </ResponseField>
+
+    ```svelte
+    <script>
+      import Button from '$lib/components/ui/Button.svelte';
+    </script>
+
+    <!-- Internal link -->
+    <Button href="/projects/">
+      view projects
+    </Button>
+
+    <!-- External link -->
+    <Button href="https://github.com/allocazione" external={true}>
+      github
+    </Button>
+    ```
+
+    ---
+
+    ## `ScrollingText.svelte`
+
+    **Location:** `src/lib/components/ui/ScrollingText.svelte`
+
+    Horizontally scrolling marquee for text that overflows its container. When the content fits, it truncates with an ellipsis. When it overflows, it duplicates the content and animates a seamless loop at 30 px/s with edge-fade masking.
+
+    <ResponseField name="text" type="string">
+      Plain text string to display. Used when no `children` snippet is provided. Defaults to `""`.
+    </ResponseField>
+
+    <ResponseField name="className" type="string">
+      Extra CSS classes forwarded to the outer container. Defaults to `""`.
+    </ResponseField>
+
+    <ResponseField name="fadeWidth" type="number">
+      Width of the transparent fade region at each edge, expressed as a percentage offset. Defaults to `8`.
+    </ResponseField>
+
+    <ResponseField name="href" type="string">
+      If supplied alongside `text` (without `children`), wraps the text in an `<a>` tag that opens in a new tab. Undefined by default.
+    </ResponseField>
+
+    <ResponseField name="children" type="Snippet">
+      Rich content slot. When provided, `text` and `href` are ignored for rendering (the snippet is rendered instead). Useful for mixing links and spans.
+    </ResponseField>
+
+    ```svelte
+    <script>
+      import ScrollingText from '$lib/components/ui/ScrollingText.svelte';
+    </script>
+
+    <!-- Plain text -->
+    <ScrollingText
+      text="Some very long track name that might overflow"
+      className="text-xl font-bold text-white"
+    />
+
+    <!-- Text with a link -->
+    <ScrollingText
+      text="Open on Spotify"
+      href="https://open.spotify.com/track/..."
+      className="text-sm text-gray-400"
+    />
+    ```
+
+    ---
+
+    ## `Ticker.svelte`
+
+    **Location:** `src/lib/components/ui/Ticker.svelte`
+
+    Animated digit display. Each character in `value` is rendered as a vertical strip of digits 0–9. The strip translates vertically so the correct digit is visible, producing a slot-machine roll effect driven by CSS `transition-transform`.
+
+    Colon characters (`:`) receive special styling as separators and are not animated.
+
+    <ResponseField name="value" type="string">
+      The string to display. Each character is individually animated. Designed for time strings like `"14:32:07"`. Defaults to `"0"`.
+    </ResponseField>
+
+    ```svelte
+    <script>
+      import Ticker from '$lib/components/ui/Ticker.svelte';
+    </script>
+
+    <Ticker value="12:34:56" />
+    ```
+
+    <Note>
+      `Ticker` is used exclusively by the `Clock` widget, which manages the live time string passed to `value`.
+    </Note>
+
+  </Tab>
+
+  <Tab title="Widgets">
+
+    ## `Clock.svelte`
+
+    **Location:** `src/lib/components/widgets/Clock.svelte`
+
+    Displays the local time in Bologna, Italy as a live `HH:MM:SS` clock. Time updates every second via `setInterval` inside a `$effect`, which is properly cleaned up on component destroy. Delegates rendering to `Ticker`.
+
+    **No props.** The time zone is hard-coded to the browser's `toLocaleTimeString('en-GB', { hour12: false })` output.
+
+    ```svelte
+    <script>
+      import Clock from '$lib/components/widgets/Clock.svelte';
+    </script>
+
+    <Clock />
+    ```
+
+    A subtle white glow appears behind the clock when the parent has the `group` class and is hovered (requires `@media (hover: hover)`):
+
+    ```html
+    <div class="group">
+      <Clock />
+    </div>
+    ```
+
+    ---
+
+    ## `StatsFM.svelte`
+
+    **Location:** `src/lib/components/widgets/StatsFM.svelte`
+
+    Music activity widget. Fetches the currently playing (or last played) track from the Stats.fm API using `siteConfig.statsFmUser`, then resolves album and artist Spotify deep-links via additional API calls. Album art is used to compute a dominant accent colour that is written to a cookie and applied as a CSS custom property (`--accent`).
+
+    **No props.** The username is read from `siteConfig.statsFmUser`.
+
+    **Internal state:**
+
+    | State variable | Purpose |
+    |---|---|
+    | `data` | Current track payload from Stats.fm |
+    | `loading` | `true` while the first fetch is in flight |
+    | `error` | `true` when the API returns an error or no data |
+    | `spotifyUrls` | Resolved Spotify deep-links for the album and each artist |
+
+    **Caching:** Results are stored in `sessionStorage` under the key `statsfm_widget_cache_v1` with a 120-second TTL. The widget polls for updates every 20 seconds.
+
+    **Accent extraction:** On each new track, the component samples the top-left pixel of the album art via a 1×1 canvas, boosts lightness to at least 60%, converts to hex, and sets `--accent` and `--accent-rgb` on `document.documentElement`.
+
+    ```svelte
+    <script>
+      import StatsFM from '$lib/components/widgets/StatsFM.svelte';
+    </script>
+
+    <StatsFM />
+    ```
+
+    Three render states exist:
+
+    - **Loading** — animated skeleton pulse
+    - **Error / no data** — `// offline...` message
+    - **Track data** — album art, track name (scrolling), artist names (scrolling with Spotify links), and a "now playing" / "last played" badge
+
+    ---
+
+    ## `ProjectCard.svelte`
+
+    **Location:** `src/lib/components/widgets/ProjectCard.svelte`
+
+    GitHub repository card. Renders as a full-height anchor (`<a>`) with a title, description, optional last-updated date, and a tag list. An accent-tinted gradient overlay and a lift transform appear on hover.
+
+    <ResponseField name="title" type="string" required>
+      Repository or project name displayed in `Space Mono` at the top of the card.
+    </ResponseField>
+
+    <ResponseField name="description" type="string" required>
+      Short description shown below the title in smaller gray text.
+    </ResponseField>
+
+    <ResponseField name="link" type="string" required>
+      Navigation target for the card anchor.
+    </ResponseField>
+
+    <ResponseField name="tags" type="string[]">
+      Technology or topic tags rendered as small bordered chips at the bottom of the card. Defaults to `[]`.
+    </ResponseField>
+
+    <ResponseField name="external" type="boolean">
+      When `true`, opens the link in a new tab with `rel="noopener noreferrer"`. Defaults to `false`.
+    </ResponseField>
+
+    <ResponseField name="updatedAt" type="string | null">
+      ISO date string (e.g. from the GitHub API's `pushed_at` field). Formatted as `"mon dd, yyyy"` in lowercase and shown above the tag list. Omit or pass `null` to hide the date. Defaults to `null`.
+    </ResponseField>
+
+    ```svelte
+    <script>
+      import ProjectCard from '$lib/components/widgets/ProjectCard.svelte';
+    </script>
+
+    <ProjectCard
+      title="my-project"
+      description="a short description of what this does"
+      link="https://github.com/allocazione/my-project"
+      tags={["svelte", "typescript"]}
+      external={true}
+      updatedAt="2026-01-15T10:30:00Z"
+    />
+    ```
+
+  </Tab>
+
+  <Tab title="Actions">
+
+    ## `tooltip`
+
+    **Location:** `src/lib/actions/tooltip.js`
+
+    A Svelte `use:` action that attaches a floating tooltip to any DOM element. The tooltip is appended directly to `document.body` and positioned above the target element via fixed coordinates. It animates in with an opacity + scale transition and out with the reverse.
+
+    **Signature:**
+
+    ```js
+    tooltip(node: HTMLElement, text: string): { update(newText: string): void, destroy(): void }
+    ```
+
+    **Parameters:**
+
+    <ResponseField name="node" type="HTMLElement">
+      The DOM element the action is bound to. Provided automatically by Svelte's `use:` directive.
+    </ResponseField>
+
+    <ResponseField name="text" type="string">
+      The tooltip label. Can be updated reactively via the `update` lifecycle method.
+    </ResponseField>
+
+    **Lifecycle:**
+
+    | Method | Behaviour |
+    |---|---|
+    | Mount | Registers `mouseenter` and `mouseleave` listeners on `node` |
+    | `update(newText)` | Replaces the tooltip content while it is visible |
+    | `destroy()` | Removes event listeners and removes the tooltip from the DOM |
+
+    **Tooltip appearance:**
+    - Background: `bg-accent` (the current accent colour)
+    - Text: `text-black text-xs font-semibold`
+    - Shape: rounded-lg with a downward-pointing arrow caret
+    - Positioned 8 px above the target, horizontally centred
+    - Enter: `opacity-0 scale-95` → `opacity-1 scale-100` (150 ms)
+    - Exit: `opacity-1 scale-100` → `opacity-0 scale-95` (150 ms), then DOM removal
+
+    ```svelte
+    <script>
+      import { tooltip } from '$lib/actions/tooltip.js';
+    </script>
+
+    <!-- Static label -->
+    <button use:tooltip={"Copy to clipboard"}>
+      copy
+    </button>
+
+    <!-- Reactive label -->
+    <script>
+      let copied = $state(false);
+    </script>
+
+    <button use:tooltip={copied ? 'Copied!' : 'Copy'} onclick={() => copied = true}>
+      copy
+    </button>
+    ```
+
+    <Note>
+      The tooltip is appended to `document.body` and uses `position: fixed` coordinates, so it is not affected by parent `overflow: hidden` or `z-index` stacking contexts. It is assigned `z-index: 9999`.
+    </Note>
+
+  </Tab>
+</Tabs>
